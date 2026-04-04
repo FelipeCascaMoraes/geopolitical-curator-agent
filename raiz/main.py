@@ -35,13 +35,27 @@ def exibir_banner():
     console.print(Panel(texto, border_style="blue", padding=(1, 2)))
 
 
+PALAVRAS_COMPLETO = ["mais detalhes", "explica", "aprofunda", "completo", "relatório", "relatorio"]
+
+ultimo_tema = ""
+
 def executar(pergunta: str):
+    global ultimo_tema
+
+    modo = "COMPLETO" if any(p in pergunta.lower() for p in PALAVRAS_COMPLETO) else "RESUMO"
+
+    if modo == "COMPLETO" and ultimo_tema:
+        pergunta_final = f"COMPLETO: {ultimo_tema}"
+    else:
+        pergunta_final = f"{modo}: {pergunta}"
+        ultimo_tema = pergunta
+
     console.print(f"\n[bold blue]Analisando:[/bold blue] [white]{pergunta}[/white]")
-    console.print("[dim]Isso pode levar alguns minutos...[/dim]\n")
+    console.print(f"[dim]Modo: {modo} — Isso pode levar alguns minutos...[/dim]\n")
 
     try:
         geopolitical_workflow.print_response(
-            pergunta,
+            pergunta_final,
             stream=True,
             markdown=True,
         )
@@ -53,7 +67,6 @@ def executar(pergunta: str):
     except Exception as e:
         console.print(f"\n[bold red]Erro:[/bold red] {e}\n")
         sys.exit(1)
-
 
 def modo_interativo():
     console.print("\n[dim]Pergunte qualquer coisa sobre o cenário geopolítico atual.[/dim]")

@@ -175,7 +175,7 @@ def buscar_gdelt(query: str, dias: int = 7, max_results: int = 10) -> list[dict]
         return resultado
 
     except Exception as e:
-        logger.error(f"GDELT: erro na busca — {e}")
+        logger.warning(f"GDELT: Indisponível, pulando GDELT — {e}")
         return []
 
 
@@ -316,7 +316,8 @@ def formatar_para_agente(artigos: list[dict]) -> str:
 # TOOL AGNO — função que o agente chama diretamente
 # =============================================================================
 
-def fetch_geopolitical_news(query: str, days: int = 7) -> str:
+def fetch_geopolitical_news(query: str, days: int = 7, **kwargs) -> list[dict]:
+    days = int(days)
     """
     Tool principal para o agente Agno buscar notícias geopolíticas.
 
