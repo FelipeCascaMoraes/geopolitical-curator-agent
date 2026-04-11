@@ -24,7 +24,6 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 import requests
-from gdeltdoc import GdeltDoc, Filters
 
 # Logger para acompanhar o que está acontecendo
 logger = logging.getLogger(__name__)
@@ -120,63 +119,11 @@ def buscar_newsdata(query: str, dias: int = 7, max_results: int = 10) -> list[di
 
 def buscar_gdelt(query: str, dias: int = 7, max_results: int = 10) -> list[dict]:
     """
-    Busca notícias geopolíticas na GDELT.
-
-    Não precisa de chave de API — 100% gratuito.
-    Cobre 65 idiomas com atualização a cada 15 minutos.
-
-    Args:
-        query       : termo de busca (ex: "Russia Ukraine war")
-        dias        : quantos dias atrás buscar (padrão: 7)
-        max_results : máximo de artigos a retornar (padrão: 10)
-
-    Returns:
-        Lista de dicionários com os artigos encontrados.
+    GDELT removido — dependência gdeltdoc descontinuada.
+    Retorna lista vazia silenciosamente.
     """
-    try:
-        gd = GdeltDoc()
-
-        # O GDELT aceita timespan como string: "7d", "24h", "1m" etc.
-        timespan = f"{dias}d"
-
-        # Monta os filtros da busca
-        # keyword  → o que buscar
-        # timespan → janela de tempo
-        f = Filters(
-            keyword=query,
-            timespan=timespan,
-        )
-
-        # Faz a busca — retorna um DataFrame pandas
-        df = gd.article_search(f)
-
-        if df is None or df.empty:
-            logger.info(f"GDELT: nenhum artigo encontrado para '{query}'")
-            return []
-
-        # Limita ao máximo de resultados
-        df = df.head(max_results)
-
-        # Normaliza pro mesmo formato do NewsData.io
-        resultado = []
-        for _, row in df.iterrows():
-            resultado.append({
-                "title"       : row.get("title", ""),
-                "description" : "",  # GDELT não retorna descrição
-                "url"         : row.get("url", ""),
-                "source"      : row.get("domain", ""),
-                "published_at": str(row.get("seendate", "")),
-                "language"    : row.get("language", ""),
-                "country"     : row.get("sourcecountry", ""),
-                "origem"      : "gdelt",
-            })
-
-        logger.info(f"GDELT: {len(resultado)} artigos encontrados para '{query}'")
-        return resultado
-
-    except Exception as e:
-        logger.warning(f"GDELT: Indisponível, pulando GDELT — {e}")
-        return []
+    logger.debug("GDELT: dependência removida, retornando []")
+    return []
 
 
 # =============================================================================
@@ -316,19 +263,13 @@ def formatar_para_agente(artigos: list[dict]) -> str:
 # TOOL AGNO — função que o agente chama diretamente
 # =============================================================================
 
-def fetch_geopolitical_news(query: str, days: int = 7, **kwargs) -> list[dict]:
-    days = int(days)
+def fetch_geopolitical_news(query: str, days: int = 7) -> str:
     """
-    Tool principal para o agente Agno buscar notícias geopolíticas.
-
-    Esta é a função registrada como tool no agente. Ela combina
-    buscar_noticias() + formatar_para_agente() num único retorno
-    de texto pronto para o agente processar.
+    Tool principal para o agente Agno buscar noticias geopoliticas.
 
     Args:
         query : tema da busca em linguagem natural
-                ex: "guerra Russia Ucrania", "tensao Taiwan China"
-        days  : quantos dias atrás buscar (padrão: 7)
+        days  : quantos dias atras buscar (padrao: 7)
 
     Returns:
         Texto markdown com os artigos encontrados

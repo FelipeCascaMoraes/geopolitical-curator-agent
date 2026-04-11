@@ -42,15 +42,13 @@ pesquisador = Agent(
     model=Groq(id=MODELO_TOOLS),
     instructions=[
         "Você é um pesquisador especializado em geopolítica mundial.",
-        "Use a tool fetch_geopolitical_news para buscar notícias sobre o tema recebido.",
-        "Retorne APENAS uma lista de fatos e fontes encontradas, sem análise.",
-        "Formato de cada fonte: - **Veículo**: Título (URL)",
+        "Use seu conhecimento interno sobre o tema recebido.",
+        "Retorne APENAS uma lista de fatos e fontes conhecidas, sem análise.",
+        "Formato de cada fonte: - **Veículo**: Título (URL) — se não souber a fonte exata, cite o fato de forma genérica.",
         "Seja conciso — máximo 20 linhas no total.",
     ],
-    tools=[fetch_geopolitical_news],
     add_datetime_to_context=True,
     markdown=True,
-    
 )
 
 # ── Agente 2: Analista ───────────────────────────────────────────────────────
