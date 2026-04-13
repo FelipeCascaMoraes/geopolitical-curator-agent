@@ -1,278 +1,301 @@
-# =============================================================================
-# tools/news_fetcher.py — Ferramenta de Busca de Notícias Geopolíticas
-# =============================================================================
-#
-# Esta tool é responsável por buscar notícias sobre conflitos e eventos
-# geopolíticos usando duas fontes complementares:
-#
-#   1. NewsData.io  — fonte primária (rica em metadados, fácil de usar)
-#   2. GDELT        — fonte secundária (gratuita, 65 idiomas, sem chave de API)
-#
-# Fluxo:
-#   buscar_noticias(query)
-#       → NewsData.io busca os artigos
-#       → Achou MIN_ARTICLES? → retorna
-#       → Não achou?          → GDELT complementa
-#       → Combina + deduplica → retorna lista final
-#
-# =============================================================================
-
-# Imports
 import os
+import re
 import logging
-from typing import Optional
-from datetime import datetime, timedelta
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
-# Logger para acompanhar o que está acontecendo
 logger = logging.getLogger(__name__)
 
-# Mínimo de artigos antes de acionar o GDELT como backup
-MIN_ARTICLES = 5
-
-# Palavras-chave geopolíticas usadas para enriquecer a busca
-GEO_KEYWORDS = [
-    "war", "conflict", "military", "attack", "ceasefire",
-    "sanctions", "troops", "missile", "invasion", "tension",
-    "nato", "nuclear", "refugee", "humanitarian", "crisis"
+# Guardian inclui media:content com imagem por item
+RSS_FEEDS = [
+    {"url": "https://www.theguardian.com/world/rss",          "source": "The Guardian"},
+    {"url": "https://www.theguardian.com/world/conflict/rss", "source": "The Guardian"},
+    {"url": "https://feeds.bbci.co.uk/news/world/rss.xml",    "source": "BBC"},
+    {"url": "https://www.aljazeera.com/xml/rss/all.xml",      "source": "Al Jazeera"},
 ]
 
+GEO_KEYWORDS = [
+    "war","conflict","military","attack","ceasefire","sanctions","troops","missile",
+    "invasion","tension","nato","nuclear","refugee","humanitarian","crisis","coup",
+    "protest","election","russia","ukraine","israel","gaza","taiwan","iran","china",
+    "guerra","conflito","tensão","crise","sanções","coreia","palestina","hamas",
+    "zelensky","putin","biden","trump","oriente","médio","middle east","africa",
+]
 
-# =============================================================================
-# NEWSDATA.IO
-# =============================================================================
+CATEGORY_MAP = {
+    "conflict":     ["war","conflict","attack","military","troops","missile","invasion",
+                     "ceasefire","battle","fighting","guerra","conflito","bombing","strike",
+                     "killed","casualties","offensive","hamas","hezbollah"],
+    "diplomacy":    ["diplomacy","sanctions","nato","summit","treaty","agreement",
+                     "negotiations","talks","diplomat","sanções","ceasefire","peace"],
+    "economy":      ["economy","oil","sanctions","trade","market","inflation","energy",
+                     "price","gdp","currency","petróleo","economia","tariff","brent"],
+    "latin-america":["brazil","venezuela","colombia","argentina","chile","peru",
+                     "mexico","latin","brasil","maduro","lula","bolsonaro"],
+}
 
-def buscar_newsdata(query: str, dias: int = 7, max_results: int = 10) -> list[dict]:
-    """
-    Busca notícias geopolíticas na NewsData.io.
+CATEGORY_LABELS = {
+    "conflict":      "CONFLITO",
+    "diplomacy":     "DIPLOMACIA",
+    "economy":       "ECONOMIA",
+    "latin-america": "AMÉRICA LATINA",
+}
 
-    Args:
-        query       : termo de busca (ex: "conflito Russia Ucrania")
-        dias        : quantos dias atrás buscar (padrão: 7)
-        max_results : máximo de artigos a retornar (padrão: 10)
+REGION_MAP = {
+    "ukraine": ["ukraine","ucrânia","kyiv","zelensky","donetsk","kharkiv"],
+    "gaza":    ["gaza","israel","hamas","palestin","west bank","netanyahu"],
+    "taiwan":  ["taiwan","strait","tsai","taipei"],
+    "iran":    ["iran","tehran","khamenei","irgc"],
+    "korea":   ["north korea","kim jong","pyongyang","coreia"],
+    "sahel":   ["sahel","mali","niger","burkina","sudan","ethiopia"],
+    "russia":  ["russia","putin","kremlin","moscow","moscou"],
+    "china":   ["china","beijing","xi jinping","prc","ccp"],
+    "latin-america": ["brazil","venezuela","colombia","argentina","brasil"],
+}
 
-    Returns:
-        Lista de dicionários com os artigos encontrados.
-        Cada artigo tem: title, description, url, source, published_at, language, country
-    """
-    api_key = os.getenv("NEWSDATA_API_KEY")
-    if not api_key:
-        logger.warning("NEWSDATA_API_KEY não encontrada no .env — pulando NewsData.io")
-        return []
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; GeopoliticalAgent/1.0)"}
 
-    # Monta a URL base da API
-    url = "https://newsdata.io/api/1/news"
 
-    # Parâmetros da requisição
-    # q        → termo de busca
-    # language → inglês e português
-    # category → politics e world (mais relevantes pro nosso caso)
-    # size     → quantos artigos por página
-    params = {
-        "apikey"  : api_key,
-        "q"       : query,
-        "language": "en,pt",
-        "category": "politics,world",
-        "size"    : max_results,
+def _parse_rss_date(date_str: str) -> str:
+    if not date_str:
+        return datetime.now(timezone.utc).isoformat()
+    try:
+        return parsedate_to_datetime(date_str).isoformat()
+    except Exception:
+        try:
+            return datetime.fromisoformat(date_str).isoformat()
+        except Exception:
+            return datetime.now(timezone.utc).isoformat()
+
+
+def _relative_time(iso_str: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        diff = datetime.now(timezone.utc) - dt
+        minutes = int(diff.total_seconds() / 60)
+        if minutes < 1:  return "agora"
+        if minutes < 60: return f"há {minutes} min"
+        hours = minutes // 60
+        if hours < 24:   return f"há {hours}h"
+        days = hours // 24
+        return f"há {days}d"
+    except Exception:
+        return ""
+
+
+def _classify(text: str) -> tuple[str, str]:
+    lower = text.lower()
+    for key, keywords in CATEGORY_MAP.items():
+        if any(kw in lower for kw in keywords):
+            return key, CATEGORY_LABELS[key]
+    return "conflict", "GEOPOLÍTICA"
+
+
+def _get_region(text: str) -> str:
+    lower = text.lower()
+    for region, keywords in REGION_MAP.items():
+        if any(kw in lower for kw in keywords):
+            return region
+    return ""
+
+
+def _is_geopolitical(text: str) -> bool:
+    return any(kw in text.lower() for kw in GEO_KEYWORDS)
+
+
+def _extract_image(item: ET.Element, ns: dict) -> str:
+    """Extrai imagem do item RSS — tenta várias tags em ordem de prioridade."""
+
+    # 1. media:content (Guardian usa isso, alta qualidade)
+    for tag in ["media:content", "media:thumbnail"]:
+        el = item.find(tag, ns)
+        if el is not None:
+            url = el.get("url", "")
+            if url.startswith("http") and any(ext in url for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                return url
+
+    # 2. enclosure
+    enc = item.find("enclosure")
+    if enc is not None:
+        url = enc.get("url", "")
+        if url.startswith("http"):
+            return url
+
+    # 3. <img> dentro da description ou content:encoded
+    for tag in ["description", "content:encoded"]:
+        text = item.findtext(tag, "") or item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded", "")
+        match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', text)
+        if match:
+            url = match.group(1)
+            if url.startswith("http"):
+                return url
+
+    return ""
+
+
+def _fetch_og_image(url: str) -> str:
+    """Busca og:image da página como último recurso. Timeout curto."""
+    try:
+        resp = requests.get(url, timeout=4, headers=HEADERS)
+        match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', resp.text)
+        if match:
+            return match.group(1)
+        match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', resp.text)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    return ""
+
+
+def buscar_rss(max_results: int = 40) -> list[dict]:
+    artigos = []
+    ns = {
+        "media":   "http://search.yahoo.com/mrss/",
+        "content": "http://purl.org/rss/1.0/modules/content/",
+        "dc":      "http://purl.org/dc/elements/1.1/",
     }
 
+    for feed in RSS_FEEDS:
+        try:
+            resp = requests.get(feed["url"], timeout=8, headers=HEADERS)
+            resp.raise_for_status()
+            root  = ET.fromstring(resp.content)
+            items = root.findall(".//item")
+
+            for item in items[:20]:
+                title       = item.findtext("title", "").strip()
+                description = item.findtext("description", "").strip()
+                url         = item.findtext("link", "").strip()
+                pub_date    = item.findtext("pubDate", "")
+                image_url   = _extract_image(item, ns)
+
+                description = re.sub(r"<[^>]+>", "", description).strip()
+                full_text   = f"{title} {description}"
+
+                if not _is_geopolitical(full_text):
+                    continue
+
+                cat_key, cat_label = _classify(full_text)
+                published_at       = _parse_rss_date(pub_date)
+
+                artigos.append({
+                    "title":         title,
+                    "description":   description[:300] if description else "",
+                    "url":           url,
+                    "source":        feed["source"],
+                    "published_at":  published_at,
+                    "relative_time": _relative_time(published_at),
+                    "category":      cat_label,
+                    "categoryKey":   cat_key,
+                    "region":        _get_region(full_text),
+                    "imageUrl":      image_url,
+                    "origem":        "rss",
+                })
+
+        except Exception as e:
+            logger.warning(f"RSS {feed['source']} falhou: {e}")
+            continue
+
+    artigos.sort(key=lambda a: a.get("published_at", ""), reverse=True)
+    artigos = _deduplicar(artigos)[:max_results]
+
+    # Para artigos sem imagem, tenta og:image em paralelo (máx 8 simultâneos)
+    sem_imagem = [a for a in artigos if not a["imageUrl"]]
+    if sem_imagem:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futures = {ex.submit(_fetch_og_image, a["url"]): a for a in sem_imagem}
+            for future in as_completed(futures, timeout=6):
+                artigo = futures[future]
+                try:
+                    img = future.result()
+                    if img:
+                        artigo["imageUrl"] = img
+                except Exception:
+                    pass
+
+    return artigos
+
+
+def buscar_newsdata(query: str, dias: int = 7, max_results: int = 10) -> list[dict]:
+    api_key = os.getenv("NEWSDATA_API_KEY")
+    if not api_key:
+        return []
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        # A NewsData.io retorna os artigos dentro de data["results"]
-        artigos = data.get("results", [])
-
-        # Normaliza o formato pra ser igual ao do GDELT
-        resultado = []
-        for artigo in artigos:
-            resultado.append({
-                "title"       : artigo.get("title", ""),
-                "description" : artigo.get("description", ""),
-                "url"         : artigo.get("link", ""),
-                "source"      : artigo.get("source_id", ""),
-                "published_at": artigo.get("pubDate", ""),
-                "language"    : artigo.get("language", ""),
-                "country"     : artigo.get("country", [""]),
-                "origem"      : "newsdata",
+        resp = requests.get("https://newsdata.io/api/1/news", params={
+            "apikey": api_key, "q": query,
+            "language": "en,pt", "category": "politics,world", "size": max_results,
+        }, timeout=10)
+        resp.raise_for_status()
+        artigos = []
+        for a in resp.json().get("results", []):
+            full_text          = f"{a.get('title','')} {a.get('description','')}"
+            cat_key, cat_label = _classify(full_text)
+            published_at       = a.get("pubDate", "")
+            artigos.append({
+                "title":         a.get("title", ""),
+                "description":   (a.get("description") or "")[:300],
+                "url":           a.get("link", ""),
+                "source":        a.get("source_id", ""),
+                "published_at":  published_at,
+                "relative_time": _relative_time(published_at),
+                "category":      cat_label,
+                "categoryKey":   cat_key,
+                "region":        _get_region(full_text),
+                "imageUrl":      a.get("image_url", ""),
+                "origem":        "newsdata",
             })
-
-        logger.info(f"NewsData.io: {len(resultado)} artigos encontrados para '{query}'")
-        return resultado
-
-    except requests.exceptions.Timeout:
-        logger.error("NewsData.io: timeout na requisição")
-        return []
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"NewsData.io: erro HTTP {e}")
-        return []
+        return artigos
     except Exception as e:
-        logger.error(f"NewsData.io: erro inesperado — {e}")
+        logger.warning(f"NewsData falhou: {e}")
         return []
 
 
-# =============================================================================
-# GDELT
-# =============================================================================
-
-def buscar_gdelt(query: str, dias: int = 7, max_results: int = 10) -> list[dict]:
-    """
-    GDELT removido — dependência gdeltdoc descontinuada.
-    Retorna lista vazia silenciosamente.
-    """
-    logger.debug("GDELT: dependência removida, retornando []")
-    return []
-
-
-# =============================================================================
-# DEDUPLICAÇÃO
-# =============================================================================
-
-def deduplica_artigos(artigos: list[dict]) -> list[dict]:
-    """
-    Remove artigos duplicados baseado na URL.
-
-    Isso é importante porque NewsData.io e GDELT podem retornar
-    o mesmo artigo de fontes como Reuters ou BBC.
-
-    Args:
-        artigos: lista combinada de artigos das duas fontes
-
-    Returns:
-        Lista sem duplicatas, mantendo a primeira ocorrência
-    """
-    vistos = set()
-    unicos = []
-
-    for artigo in artigos:
-        url = artigo.get("url", "")
+def _deduplicar(artigos: list[dict]) -> list[dict]:
+    vistos, unicos = set(), []
+    for a in artigos:
+        url = a.get("url", "")
         if url and url not in vistos:
             vistos.add(url)
-            unicos.append(artigo)
-
+            unicos.append(a)
     return unicos
 
 
-# =============================================================================
-# FUNÇÃO PRINCIPAL — usada pelo agente
-# =============================================================================
+def buscar_noticias(query: str = "", dias: int = 7, max_results: int = 40) -> list[dict]:
+    artigos_rss = buscar_rss(max_results)
+    if query and query.strip():
+        lower     = query.lower()
+        filtrados = [a for a in artigos_rss
+                     if lower in a["title"].lower() or lower in a["description"].lower()]
+        artigos_rss = filtrados if filtrados else artigos_rss
+    if len(artigos_rss) < 5:
+        artigos_nd = buscar_newsdata(query or "geopolitics conflict", dias, max_results)
+        combinados = _deduplicar(artigos_rss + artigos_nd)
+    else:
+        combinados = _deduplicar(artigos_rss)
+    return combinados[:max_results]
 
-def buscar_noticias(
-    query: str,
-    dias: int = 7,
-    max_results: int = 10,
-    forcar_gdelt: bool = False,
-) -> list[dict]:
-    """
-    Busca notícias geopolíticas combinando NewsData.io e GDELT.
-
-    Esta é a função que o agente Agno vai chamar como tool.
-
-    Fluxo:
-        1. Tenta NewsData.io
-        2. Se não achar MIN_ARTICLES → aciona GDELT também
-        3. Combina os resultados
-        4. Remove duplicatas
-        5. Retorna lista final
-
-    Args:
-        query        : tema da busca (ex: "guerra Gaza Hamas Israel")
-        dias         : janela de tempo em dias (padrão: 7)
-        max_results  : máximo de artigos por fonte (padrão: 10)
-        forcar_gdelt : se True, usa GDELT mesmo que NewsData.io já tenha o suficiente
-
-    Returns:
-        Lista de artigos normalizada e deduplicada.
-    """
-    logger.info(f"Iniciando busca: '{query}' | últimos {dias} dias")
-
-    artigos_newsdata = buscar_newsdata(query, dias, max_results)
-    artigos_gdelt    = []
-
-    # Aciona o GDELT se:
-    # - NewsData.io retornou menos que o mínimo, OU
-    # - forcar_gdelt=True foi passado explicitamente
-    if len(artigos_newsdata) < MIN_ARTICLES or forcar_gdelt:
-        logger.info(
-            f"NewsData.io retornou {len(artigos_newsdata)} artigos "
-            f"(mínimo: {MIN_ARTICLES}) — acionando GDELT"
-        )
-        artigos_gdelt = buscar_gdelt(query, dias, max_results)
-
-    # Combina as duas listas (NewsData primeiro — mais rico em metadados)
-    combinados = artigos_newsdata + artigos_gdelt
-
-    # Remove duplicatas
-    resultado = deduplica_artigos(combinados)
-
-    logger.info(
-        f"Busca finalizada: {len(resultado)} artigos únicos "
-        f"({len(artigos_newsdata)} NewsData + {len(artigos_gdelt)} GDELT)"
-    )
-
-    return resultado
-
-
-# =============================================================================
-# FORMATADOR — transforma a lista em texto pro agente
-# =============================================================================
 
 def formatar_para_agente(artigos: list[dict]) -> str:
-    """
-    Converte a lista de artigos em texto markdown para o agente processar.
-
-    O agente Agno trabalha com texto, não com listas Python.
-    Esta função formata os artigos de um jeito que o agente consegue
-    entender e referenciar facilmente.
-
-    Args:
-        artigos: lista de artigos retornada por buscar_noticias()
-
-    Returns:
-        String em markdown com todos os artigos numerados
-    """
     if not artigos:
-        return "Nenhum artigo encontrado para o tema informado."
-
-    linhas = [f"## Notícias encontradas ({len(artigos)} artigos)\n"]
-
-    for i, artigo in enumerate(artigos, start=1):
-        titulo      = artigo.get("title", "Sem título")
-        url         = artigo.get("url", "")
-        source      = artigo.get("source", "Fonte desconhecida")
-        published   = artigo.get("published_at", "")
-        description = artigo.get("description", "")
-        origem      = artigo.get("origem", "")
-        language    = artigo.get("language", "")
-
-        linhas.append(f"### [{i}] {titulo}")
-        linhas.append(f"- **Fonte**: {source} `({origem})`")
-        linhas.append(f"- **Publicado**: {published}")
-        linhas.append(f"- **Idioma**: {language}")
-        linhas.append(f"- **URL**: {url}")
-        if description:
-            linhas.append(f"- **Descrição**: {description}")
-        linhas.append("")  # linha em branco entre artigos
-
+        return "Nenhum artigo encontrado."
+    linhas = [f"## Notícias ({len(artigos)} artigos)\n"]
+    for i, a in enumerate(artigos, 1):
+        linhas.append(f"### [{i}] {a.get('title','')}")
+        linhas.append(f"- Fonte: {a.get('source','')} | {a.get('relative_time','')}")
+        linhas.append(f"- URL: {a.get('url','')}")
+        if a.get("description"):
+            linhas.append(f"- {a['description']}")
+        linhas.append("")
     return "\n".join(linhas)
 
 
-# =============================================================================
-# TOOL AGNO — função que o agente chama diretamente
-# =============================================================================
-
 def fetch_geopolitical_news(query: str, days: int = 7) -> str:
-    """
-    Tool principal para o agente Agno buscar noticias geopoliticas.
-
-    Args:
-        query : tema da busca em linguagem natural
-        days  : quantos dias atras buscar (padrao: 7)
-
-    Returns:
-        Texto markdown com os artigos encontrados
-    """
     artigos = buscar_noticias(query=query, dias=int(days))
     return formatar_para_agente(artigos)

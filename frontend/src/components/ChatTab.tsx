@@ -5,37 +5,47 @@ import { chatStream } from '../api'
 import { ChatMessage } from '../types'
 
 interface ChatTabProps {
-  onBack?: () => void
+  onMessageSent?: (question: string) => void
+  pendingQuestion?: string | null
+  onPendingConsumed?: () => void
 }
 
 const SUGGESTIONS = [
-  { icon: '⚔️', text: 'O que está acontecendo na guerra da Ucrânia?', query: 'guerra Russia Ucrania' },
+  { icon: '⚔️', text: 'O que está acontecendo na guerra da Ucrânia?',   query: 'guerra Russia Ucrania' },
   { icon: '🕊️', text: 'Quais conflitos estão ativos no Oriente Médio?', query: 'conflitos Oriente Medio Israel Palestina' },
-  { icon: '🛢️', text: 'Como a tensão em Taiwan afeta o mercado?', query: 'tensao Taiwan China mercado semicondutores' },
-  { icon: '💵', text: 'Impacto das sanções na economia mundial?', query: 'sanções economicas Russia impacto global' },
-  { icon: '🌎', text: 'Situação da América Latina geopolítica', query: 'America Latina geopolítica conflitos' },
-  { icon: '🇧🇷', text: 'Como os conflitos afetam o Brasil?', query: 'impacto conflitos geopoliticos Brasil economia' },
+  { icon: '🛢️', text: 'Como a tensão em Taiwan afeta o mercado?',        query: 'tensao Taiwan China mercado semicondutores' },
+  { icon: '💵', text: 'Impacto das sanções na economia mundial?',        query: 'sanções economicas Russia impacto global' },
+  { icon: '🌎', text: 'Situação da América Latina geopolítica',          query: 'America Latina geopolítica conflitos' },
+  { icon: '🇧🇷', text: 'Como os conflitos afetam o Brasil?',             query: 'impacto conflitos geopoliticos Brasil economia' },
 ]
 
-export default function ChatTab({ onBack }: ChatTabProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
+export default function ChatTab({ onMessageSent, pendingQuestion, onPendingConsumed }: ChatTabProps) {
+  const [messages, setMessages]     = useState<ChatMessage[]>([])
+  const [input, setInput]           = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+  const abortRef      = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Dispara pergunta vinda do histórico
+  useEffect(() => {
+    if (pendingQuestion) {
+      sendMessage(pendingQuestion)
+      onPendingConsumed?.()
+    }
+  }, [pendingQuestion])
+
   const sendMessage = async (text?: string) => {
     const question = text || input.trim()
-    if (!question) return
+    if (!question || isStreaming) return
 
-    const userMsg: ChatMessage = { role: 'user', content: question }
-    setMessages(prev => [...prev, userMsg])
+    setMessages(prev => [...prev, { role: 'user', content: question }])
     setInput('')
     setIsStreaming(true)
+    onMessageSent?.(question)
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -45,26 +55,25 @@ export default function ChatTab({ onBack }: ChatTabProps) {
 
     try {
       const generator = chatStream(question, controller.signal)
-
       for await (const chunk of generator) {
         assistantContent += chunk
         setMessages(prev => {
           const updated = [...prev]
-          const last = updated[updated.length - 1]
-          if (last.role === 'assistant') {
-            last.content = assistantContent
-          }
+          const last    = updated[updated.length - 1]
+          if (last.role === 'assistant') last.content = assistantContent
           return updated
         })
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        assistantContent += `\n\n**Erro:** ${error.message?.startsWith('Erro na API')
-          ? 'Não foi possível conectar ao servidor.'
-          : error.message}`
+        assistantContent += `\n\n**Erro:** ${
+          error.message?.startsWith('Erro na API')
+            ? 'Não foi possível conectar ao servidor.'
+            : error.message
+        }`
         setMessages(prev => {
           const updated = [...prev]
-          const last = updated[updated.length - 1]
+          const last    = updated[updated.length - 1]
           if (last.role === 'assistant') last.content = assistantContent
           return updated
         })
@@ -76,8 +85,7 @@ export default function ChatTab({ onBack }: ChatTabProps) {
   }
 
   const stopStreaming = () => { abortRef.current?.abort(); setIsStreaming(false) }
-
-  const hasMessages = messages.length > 0
+  const hasMessages   = messages.length > 0
 
   return (
     <div className="chat-container">
@@ -115,7 +123,7 @@ export default function ChatTab({ onBack }: ChatTabProps) {
           ))}
           {isStreaming && (
             <div className="streaming-indicator">
-              <div className="typing-dots"><span></span><span></span><span></span></div>
+              <div className="typing-dots"><span /><span /><span /></div>
               <span>Analisando fontes e gerando resposta...</span>
             </div>
           )}
@@ -136,11 +144,15 @@ export default function ChatTab({ onBack }: ChatTabProps) {
           />
           {isStreaming ? (
             <button className="input-button stop" onClick={stopStreaming}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2"/>
+              </svg>
             </button>
           ) : (
             <button className="input-button send" onClick={() => sendMessage()} disabled={!input.trim()}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="m22 2-11 11"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m22 2-7 20-4-9-9-4Z"/><path d="m22 2-11 11"/>
+              </svg>
             </button>
           )}
         </div>

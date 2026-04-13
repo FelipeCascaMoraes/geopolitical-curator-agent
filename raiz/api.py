@@ -2,7 +2,8 @@
 import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
+import requests as req_lib
 from pydantic import BaseModel
 
 from agent import geopolitical_workflow, relator
@@ -147,7 +148,6 @@ TRENDING_QUERIES = [
 
 @app.get("/api/news")
 def get_news(category: str = "", region: str = "", days: int = 7, max_results: int = 20):
-    """Retorna artigos de noticias."""
     query_parts = []
     if category and category != "all":
         query_parts.append(category)
@@ -159,7 +159,6 @@ def get_news(category: str = "", region: str = "", days: int = 7, max_results: i
     except Exception as e:
         print(f"[WARN] buscar_noticias falhou: {e}")
         artigos = []
-    # Retorna no formato que o frontend espera
     return {"articles": [
         {
             "title": a.get("title", ""),
@@ -167,10 +166,14 @@ def get_news(category: str = "", region: str = "", days: int = 7, max_results: i
             "url": a.get("url", ""),
             "source": a.get("source", ""),
             "published_at": a.get("published_at", ""),
+            "relative_time": a.get("relative_time", ""),
+            "category": a.get("category", ""),
+            "categoryKey": a.get("categoryKey", ""),
+            "region": a.get("region", ""),
+            "imageUrl": a.get("imageUrl", ""),
         }
         for a in artigos
     ]}
-
 
 @app.get("/api/news/trending")
 def get_trending():
@@ -282,6 +285,20 @@ Retorne EXATAMENTE este JSON:
             "sources": []
         }
 
+@app.get("/api/image-proxy")
+def image_proxy(url: str):
+    try:
+        resp = req_lib.get(url, timeout=6, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; GeopoliticalAgent/1.0)",
+        })
+        content_type = resp.headers.get("content-type", "image/jpeg")
+        return Response(
+            content=resp.content,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    except Exception:
+        return Response(status_code=404)
 
 if __name__ == "__main__":
     import uvicorn

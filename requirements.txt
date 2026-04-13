@@ -30,6 +30,12 @@ pydantic                    # schemas tipados (GeopoliticalReport, etc.)
 pandas                      # gdeltdoc retorna DataFrames
 
 # -----------------------------------------------------------------------------
+# API (FastAPI + servidor ASGI)
+# -----------------------------------------------------------------------------
+fastapi
+uvicorn[standard]
+
+# -----------------------------------------------------------------------------
 # Utilitários
 # -----------------------------------------------------------------------------
 python-dotenv               # lê o arquivo .env

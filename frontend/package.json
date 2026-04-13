@@ -9,11 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/three": "^0.183.1",
     "lucide-react": "^0.477.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
