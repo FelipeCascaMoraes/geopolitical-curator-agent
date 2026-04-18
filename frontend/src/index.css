@@ -98,7 +98,7 @@ body {
 
 .sidebar-globe-canvas {
   width: 100%;
-  height: 190px;
+  height: 260px;
   border-radius: 8px;
   overflow: hidden;
   cursor: grab;
@@ -773,7 +773,10 @@ body {
 
 .mobile-menu-btn  { display: none; }
 .sidebar-backdrop { display: none; }
-/* ── History panel ─────────────────────────────── */
+
+/* ==========================================================
+   HISTORY PANEL
+========================================================== */
 .history-panel {
   flex: 1;
   display: flex;
@@ -782,14 +785,14 @@ body {
   min-height: 0;
   overflow: hidden;
 }
- 
+
 .history-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 14px 6px;
 }
- 
+
 .history-panel-title {
   font-size: 10px;
   font-weight: 600;
@@ -797,7 +800,7 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
- 
+
 .history-clear-btn {
   background: none;
   border: none;
@@ -808,16 +811,16 @@ body {
   padding: 0;
   transition: color 0.12s;
 }
- 
+
 .history-clear-btn:hover { color: #8B949E; }
- 
+
 .history-empty {
   padding: 12px 14px;
   font-size: 12px;
   color: #4B5563;
   font-style: italic;
 }
- 
+
 .history-list {
   flex: 1;
   overflow-y: auto;
@@ -826,7 +829,7 @@ body {
   gap: 2px;
   padding: 0 8px;
 }
- 
+
 .history-item {
   display: flex;
   align-items: flex-start;
@@ -842,17 +845,17 @@ body {
   text-align: left;
   transition: all 0.12s;
 }
- 
+
 .history-item:hover {
   background: rgba(255,255,255,0.04);
   border-color: rgba(255,255,255,0.06);
   color: #C9D1D9;
 }
- 
+
 .history-item svg { flex-shrink: 0; margin-top: 1px; opacity: 0.5; }
- 
+
 .history-item-body { flex: 1; min-width: 0; }
- 
+
 .history-item-question {
   font-size: 12px;
   color: inherit;
@@ -861,15 +864,9 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
- 
+
 .history-item-time {
   font-size: 10px;
   color: #4B5563;
   margin-top: 2px;
-}
- 
-/* Globo maior */
-.sidebar-globe-canvas {
-  width: 100%;
-  height: 260px !important;
 }
