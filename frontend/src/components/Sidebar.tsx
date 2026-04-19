@@ -1,20 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { TabType } from '../types'
-
-interface HistoryItem {
-  id: string
-  question: string
-  timestamp: Date
-}
+import { Conversation } from '../App'
 
 interface SidebarProps {
-  activeTab: TabType
-  onTabChange: (tab: TabType) => void
-  apiConnected: boolean
-  chatHistory?: HistoryItem[]
-  onHistorySelect?: (item: HistoryItem) => void
-  onHistoryClear?: () => void
+  activeTab:            TabType
+  onTabChange:          (tab: TabType) => void
+  apiConnected:         boolean
+  conversations:        Conversation[]
+  activeConvId:         string
+  onSelectConversation: (id: string) => void
+  onNewConversation:    () => void
+  onDeleteConversation: (id: string) => void
+  onClearAll:           () => void
 }
 
 const REGIONS = [
@@ -29,9 +27,9 @@ const REGIONS = [
 ]
 
 const LEVEL_COLOR: Record<string, string> = {
-  critical: '#E24B4A',
-  high:     '#EF9F27',
-  medium:   '#378ADD',
+  critical: '#ef4444',
+  high:     '#f59e0b',
+  medium:   '#a78bfa',
   low:      '#1D9E75',
 }
 
@@ -42,9 +40,9 @@ function getTensionScore() {
 }
 
 function getTensionLabel(score: number) {
-  if (score > 0.75) return { label: 'CRÍTICA',  color: '#E24B4A' }
-  if (score > 0.5)  return { label: 'ELEVADA',  color: '#EF9F27' }
-  if (score > 0.25) return { label: 'MODERADA', color: '#EF9F27' }
+  if (score > 0.75) return { label: 'CRÍTICA',  color: '#ef4444' }
+  if (score > 0.5)  return { label: 'ELEVADA',  color: '#f59e0b' }
+  if (score > 0.25) return { label: 'MODERADA', color: '#f59e0b' }
   return                   { label: 'BAIXA',    color: '#1D9E75' }
 }
 
@@ -69,24 +67,31 @@ function relativeTime(date: Date): string {
 
 export default function Sidebar({
   activeTab, onTabChange, apiConnected,
-  chatHistory = [], onHistorySelect, onHistoryClear,
+  conversations, activeConvId,
+  onSelectConversation, onNewConversation,
+  onDeleteConversation, onClearAll,
 }: SidebarProps) {
   const mountRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<{ label: string; x: number; y: number } | null>(null)
+  const [hoveredConvId, setHoveredConvId] = useState<string | null>(null)
 
   const tensionScore  = getTensionScore()
   const tension       = getTensionLabel(tensionScore)
   const criticalCount = REGIONS.filter(r => r.level === 'critical').length
   const highCount     = REGIONS.filter(r => r.level === 'high').length
 
+  // =============================================================================
+  // GLOBO 3D — Three.js
+  // Sem mudanças na lógica, só a cor dos marcadores usa LEVEL_COLOR atualizado
+  // =============================================================================
   useEffect(() => {
     if (!mountRef.current) return
     const el = mountRef.current
     const W  = el.clientWidth  || 240
     const H  = el.clientHeight || 260
 
-    const scene  = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 1000)
+    const scene    = new THREE.Scene()
+    const camera   = new THREE.PerspectiveCamera(45, W / H, 0.1, 1000)
     camera.position.z = 2.4
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
@@ -94,7 +99,6 @@ export default function Sidebar({
     renderer.setPixelRatio(window.devicePixelRatio)
     el.appendChild(renderer.domElement)
 
-    // Globe
     const geo     = new THREE.SphereGeometry(1, 64, 64)
     const texture = new THREE.TextureLoader().load(
       'https://unpkg.com/three-globe/example/img/earth-day.jpg'
@@ -103,19 +107,17 @@ export default function Sidebar({
     const globe = new THREE.Mesh(geo, mat)
     scene.add(globe)
 
-    // Atmosphere
+    // Atmosfera com tom arroxeado
     const atmMat = new THREE.MeshPhongMaterial({
-      color: 0x3399ff, transparent: true, opacity: 0.07, side: THREE.FrontSide,
+      color: 0x7c3aed, transparent: true, opacity: 0.07, side: THREE.FrontSide,
     })
     scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.02, 64, 64), atmMat))
 
-    // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 0.6))
     const sun = new THREE.DirectionalLight(0xffffff, 1.2)
     sun.position.set(5, 3, 5)
     scene.add(sun)
 
-    // Markers + rings
     const markerMeshes: { mesh: THREE.Mesh; region: typeof REGIONS[0] }[] = []
     REGIONS.forEach(r => {
       const pos  = latLonToVec3(r.lat, r.lon, 1.02)
@@ -129,15 +131,17 @@ export default function Sidebar({
 
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.035, 0.048, 24),
-        new THREE.MeshBasicMaterial({ color: LEVEL_COLOR[r.level], transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({
+          color: LEVEL_COLOR[r.level], transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+        })
       )
       ring.position.copy(pos)
       ring.lookAt(pos.clone().multiplyScalar(2))
       scene.add(ring)
     })
 
-    // Drag
     let isDragging = false, prevX = 0, rotY = 0
+
     const onDown = (e: MouseEvent) => { isDragging = true; prevX = e.clientX }
     const onUp   = () => { isDragging = false }
     const onMove = (e: MouseEvent) => {
@@ -150,11 +154,10 @@ export default function Sidebar({
       prevX = e.clientX
     }
 
-    // Tooltip
     const raycaster = new THREE.Raycaster()
     const mouse     = new THREE.Vector2()
     const onHover   = (e: MouseEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect()
+      const rect  = renderer.domElement.getBoundingClientRect()
       mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1
       mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1
       raycaster.setFromCamera(mouse, camera)
@@ -173,7 +176,6 @@ export default function Sidebar({
     renderer.domElement.addEventListener('mousemove', onHover)
     window.addEventListener('mouseup', onUp)
 
-    // Animate
     let animId = 0, t = 0
     const animate = () => {
       animId = requestAnimationFrame(animate)
@@ -217,7 +219,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Globe */}
+      {/* Globo 3D */}
       <div className="sidebar-globe-wrap">
         <div ref={mountRef} className="sidebar-globe-canvas" style={{ position: 'relative' }}>
           {tooltip && (
@@ -235,7 +237,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Tension bar */}
+      {/* Barra de tensão */}
       <div className="tension-bar-wrap">
         <div className="tension-bar-header">
           <span className="tension-bar-label">Tensão global</span>
@@ -246,7 +248,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Nav */}
+      {/* Navegação entre abas */}
       <nav className="sidebar-nav">
         {(['news', 'chat'] as const).map(tab => (
           <button
@@ -260,31 +262,57 @@ export default function Sidebar({
         ))}
       </nav>
 
-      {/* Chat history */}
+      {/* Botão nova conversa */}
+      <button className="new-chat-btn" onClick={onNewConversation}>
+        <PlusIcon />
+        Nova conversa
+      </button>
+
+      {/* Histórico de conversas */}
       <div className="history-panel">
         <div className="history-panel-header">
-          <span className="history-panel-title">Histórico</span>
-          {chatHistory.length > 0 && (
-            <button className="history-clear-btn" onClick={onHistoryClear}>limpar</button>
+          <span className="history-panel-title">Conversas</span>
+          {conversations.length > 1 && (
+            <button className="history-clear-btn" onClick={onClearAll}>
+              limpar tudo
+            </button>
           )}
         </div>
 
-        {chatHistory.length === 0 ? (
+        {conversations.length === 0 ? (
           <div className="history-empty">Nenhuma conversa ainda</div>
         ) : (
           <div className="history-list">
-            {chatHistory.map(item => (
-              <button
-                key={item.id}
-                className="history-item"
-                onClick={() => onHistorySelect?.(item)}
+            {conversations.map(conv => (
+              <div
+                key={conv.id}
+                className={`history-item ${conv.id === activeConvId ? 'active' : ''}`}
+                onClick={() => onSelectConversation(conv.id)}
+                onMouseEnter={() => setHoveredConvId(conv.id)}
+                onMouseLeave={() => setHoveredConvId(null)}
               >
                 <ChatIcon />
                 <div className="history-item-body">
-                  <div className="history-item-question">{item.question}</div>
-                  <div className="history-item-time">{relativeTime(item.timestamp)}</div>
+                  <div className="history-item-title">{conv.title}</div>
+                  <div className="history-item-time">{relativeTime(conv.updatedAt)}</div>
                 </div>
-              </button>
+                {/* Botão deletar — só aparece no hover */}
+                {hoveredConvId === conv.id && (
+                  <button
+                    className="history-delete-btn"
+                    onClick={e => { e.stopPropagation(); onDeleteConversation(conv.id) }}
+                    title="Deletar conversa"
+                    style={{
+                      background: 'none', border: 'none',
+                      color: 'var(--text-muted)', cursor: 'pointer',
+                      fontSize: '14px', padding: '0 2px', lineHeight: 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -302,6 +330,10 @@ export default function Sidebar({
   )
 }
 
+// =============================================================================
+// ÍCONES
+// =============================================================================
+
 function NewsIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 15 15" fill="none">
@@ -316,7 +348,16 @@ function NewsIcon() {
 function ChatIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 15 15" fill="none">
-      <path d="M1.5 2C1.5 1.72 1.72 1.5 2 1.5H13C13.28 1.5 13.5 1.72 13.5 2V10C13.5 10.28 13.28 10.5 13 10.5H4.5L1.5 13.5V2Z" fill="currentColor" opacity="0.85"/>
+      <path d="M1.5 2C1.5 1.72 1.72 1.5 2 1.5H13C13.28 1.5 13.5 1.72 13.5 2V10C13.5 10.28 13.28 10.5 13 10.5H4.5L1.5 13.5V2Z"
+        fill="currentColor" opacity="0.85"/>
+    </svg>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 15 15" fill="none">
+      <path d="M7.5 1.5V13.5M1.5 7.5H13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
     </svg>
   )
 }

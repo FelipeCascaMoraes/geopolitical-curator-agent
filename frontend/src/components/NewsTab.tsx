@@ -2,32 +2,44 @@ import { useState, useEffect, useCallback } from 'react'
 import { getNews } from '../api'
 import { NewsArticle } from '../types'
 
+// Proxy de imagem no backend — resolve CORS das imagens dos feeds
 const proxyImg = (url: string) =>
   url ? `http://localhost:8000/api/image-proxy?url=${encodeURIComponent(url)}` : ''
 
+// =============================================================================
+// CONFIGURAÇÃO DAS CATEGORIAS
+// Esses valores têm que bater exatamente com os categoryKey do news_fetcher.py
+// =============================================================================
+
 const FILTERS = [
-  { key: 'all',           label: 'Todos' },
-  { key: 'conflict',      label: 'Conflitos' },
-  { key: 'diplomacy',     label: 'Diplomacia' },
-  { key: 'economy',       label: 'Economia' },
-  { key: 'latin-america', label: 'Am. Latina' },
+  { key: 'all',          label: 'Todos'         },
+  { key: 'middle-east',  label: 'Oriente Médio' },
+  { key: 'europe',       label: 'Europa'        },
+  { key: 'brazil',       label: 'Brasil'        },
 ]
 
-const LEVEL_COLOR: Record<string, string> = {
-  conflict:       '#E24B4A',
-  diplomacy:      '#378ADD',
-  economy:        '#1D9E75',
-  'latin-america':'#EF9F27',
+// Cor do badge e do chip de cada categoria
+const CATEGORY_COLOR: Record<string, string> = {
+  'middle-east': '#E24B4A', // vermelho — região de alta tensão
+  'europe':      '#378ADD', // azul
+  'brazil':      '#1D9E75', // verde
 }
 
+// Imagem exibida quando o artigo não tem imagem própria
 const FALLBACK_IMAGES: Record<string, string> = {
-  conflict:       'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600&h=300&fit=crop',
-  diplomacy:      'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=600&h=300&fit=crop',
-  economy:        'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop',
-  'latin-america':'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=600&h=300&fit=crop',
+  'middle-east': 'https://images.unsplash.com/photo-1548943487-a2e4e43b4853?w=600&h=300&fit=crop',
+  'europe':      'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?w=600&h=300&fit=crop',
+  'brazil':      'https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=600&h=300&fit=crop',
 }
+
+// Fallback genérico caso a categoria não seja reconhecida
+const FALLBACK_DEFAULT = 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600&h=300&fit=crop'
 
 type ArticleWithImage = NewsArticle & { relative_time?: string; imageUrl?: string }
+
+// =============================================================================
+// COMPONENTE PRINCIPAL
+// =============================================================================
 
 export default function NewsTab() {
   const [articles, setArticles]       = useState<ArticleWithImage[]>([])
@@ -52,12 +64,14 @@ export default function NewsTab() {
     }
   }, [])
 
+  // Busca ao montar e refresca a cada 15 minutos
   useEffect(() => {
     fetchNews()
     const interval = setInterval(fetchNews, 15 * 60 * 1000)
     return () => clearInterval(interval)
   }, [fetchNews])
 
+  // Filtragem local — não faz nova requisição ao trocar categoria
   const filtered = articles.filter(a => {
     const matchFilter = filter === 'all' || a.categoryKey === filter
     const matchSearch = !search ||
@@ -66,12 +80,14 @@ export default function NewsTab() {
     return matchFilter && matchSearch
   })
 
+  // Primeiro artigo vira hero card só quando não há filtro nem busca ativos
   const hero = filter === 'all' && !search ? filtered[0] : null
   const rest = hero ? filtered.slice(1) : filtered
 
   return (
     <div className="news-page">
-      {/* Header */}
+
+      {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="news-header">
         <div className="news-header-top">
           <div>
@@ -82,9 +98,16 @@ export default function NewsTab() {
               </span>
             )}
           </div>
-          <button className="news-refresh-btn" onClick={fetchNews} disabled={loading} title="Atualizar">
-            <svg width="14" height="14" viewBox="0 0 15 15" fill="none"
-              style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }}>
+          <button
+            className="news-refresh-btn"
+            onClick={fetchNews}
+            disabled={loading}
+            title="Atualizar"
+          >
+            <svg
+              width="14" height="14" viewBox="0 0 15 15" fill="none"
+              style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }}
+            >
               <path d="M1.5 7.5A6 6 0 0 1 12 3M13.5 7.5A6 6 0 0 1 3 12"
                 stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
               <path d="M12 3V6.5H8.5" stroke="currentColor" strokeWidth="1.3"
@@ -93,37 +116,52 @@ export default function NewsTab() {
           </button>
         </div>
 
-        {/* Search */}
+        {/* Busca */}
         <div className="news-search-wrap">
-          <svg width="13" height="13" viewBox="0 0 15 15" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>
+          <svg width="13" height="13" viewBox="0 0 15 15" fill="none"
+            style={{ flexShrink: 0, opacity: 0.4 }}>
             <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/>
             <path d="M10 10L13.5 13.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
           </svg>
-          <input className="news-search-input" type="text"
-            placeholder="Buscar notícias..." value={search}
-            onChange={e => setSearch(e.target.value)} />
+          <input
+            className="news-search-input"
+            type="text"
+            placeholder="Buscar notícias..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
           {search && (
             <button className="news-search-clear" onClick={() => setSearch('')}>✕</button>
           )}
         </div>
 
-        {/* Filters */}
+        {/* Filtros de região */}
         <div className="news-filters">
           {FILTERS.map(f => (
-            <button key={f.key}
+            <button
+              key={f.key}
               className={`news-filter-chip ${filter === f.key ? 'active' : ''}`}
-              style={filter === f.key && f.key !== 'all'
-                ? { borderColor: LEVEL_COLOR[f.key], color: LEVEL_COLOR[f.key], background: `${LEVEL_COLOR[f.key]}18` }
-                : {}}
-              onClick={() => setFilter(f.key)}>
-              {f.key !== 'all' && <span className="chip-dot" style={{ background: LEVEL_COLOR[f.key] }} />}
+              style={
+                filter === f.key && f.key !== 'all'
+                  ? {
+                      borderColor: CATEGORY_COLOR[f.key],
+                      color:       CATEGORY_COLOR[f.key],
+                      background:  `${CATEGORY_COLOR[f.key]}18`,
+                    }
+                  : {}
+              }
+              onClick={() => setFilter(f.key)}
+            >
+              {f.key !== 'all' && (
+                <span className="chip-dot" style={{ background: CATEGORY_COLOR[f.key] }} />
+              )}
               {f.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Content */}
+      {/* ── Conteúdo ─────────────────────────────────────────────────────── */}
       {loading && articles.length === 0 ? (
         <div className="news-loading">
           <div className="news-loading-dots"><span /><span /><span /></div>
@@ -133,10 +171,7 @@ export default function NewsTab() {
         <div className="news-empty">Nenhuma notícia encontrada.</div>
       ) : (
         <div className="news-grid-wrap">
-          {/* Hero card */}
           {hero && <HeroCard article={hero} onClick={() => setSelected(hero)} />}
-
-          {/* Grid */}
           <div className="news-cards-grid">
             {rest.map((article, i) => (
               <NewsCard key={i} article={article} onClick={() => setSelected(article)} />
@@ -145,79 +180,112 @@ export default function NewsTab() {
         </div>
       )}
 
-      {selected && <ArticleModal article={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <ArticleModal article={selected} onClose={() => setSelected(null)} />
+      )}
     </div>
   )
 }
 
-/* ── Hero Card ──────────────────────────────────────────────────────────── */
+// =============================================================================
+// HELPERS INTERNOS
+// =============================================================================
+
+/** Resolve a cor e a imagem de fallback de um artigo. */
+function resolveArticle(article: ArticleWithImage) {
+  const color    = CATEGORY_COLOR[article.categoryKey || ''] || '#8B949E'
+  const fallback = FALLBACK_IMAGES[article.categoryKey || ''] || FALLBACK_DEFAULT
+  const imgSrc   = article.imageUrl || fallback
+  return { color, fallback, imgSrc }
+}
+
+// =============================================================================
+// SUB-COMPONENTES
+// =============================================================================
+
+/* ── Hero Card ────────────────────────────────────────────────────────────── */
 
 function HeroCard({ article, onClick }: { article: ArticleWithImage; onClick: () => void }) {
-  const color    = LEVEL_COLOR[article.categoryKey || ''] || '#8B949E'
-  const imgSrc   = article.imageUrl || FALLBACK_IMAGES[article.categoryKey || ''] || FALLBACK_IMAGES.conflict
+  const { color, fallback, imgSrc } = resolveArticle(article)
   const [imgErr, setImgErr] = useState(false)
 
   return (
     <div className="news-hero-card" onClick={onClick}>
       <div className="news-hero-img">
         <img
-          src={imgErr ? FALLBACK_IMAGES[article.categoryKey || 'conflict'] : proxyImg(imgSrc)}
+          src={imgErr ? fallback : proxyImg(imgSrc)}
           alt={article.title}
           onError={() => setImgErr(true)}
         />
         {article.category && (
-          <span className="news-card-badge" style={{ background: color }}>{article.category}</span>
+          <span className="news-card-badge" style={{ background: color }}>
+            {article.category}
+          </span>
         )}
       </div>
       <div className="news-hero-body">
         <div className="article-row-meta">
           <span className="article-source">{article.source}</span>
-          {article.relative_time && <><span className="meta-sep">·</span><span className="article-time">{article.relative_time}</span></>}
+          {article.relative_time && (
+            <>
+              <span className="meta-sep">·</span>
+              <span className="article-time">{article.relative_time}</span>
+            </>
+          )}
         </div>
         <div className="news-hero-title">{article.title}</div>
-        {article.description && <div className="news-hero-desc">{article.description}</div>}
+        {article.description && (
+          <div className="news-hero-desc">{article.description}</div>
+        )}
         <span className="news-read-more" style={{ color }}>Ler mais →</span>
       </div>
     </div>
   )
 }
 
-/* ── News Card ──────────────────────────────────────────────────────────── */
+/* ── News Card ────────────────────────────────────────────────────────────── */
 
 function NewsCard({ article, onClick }: { article: ArticleWithImage; onClick: () => void }) {
-  const color  = LEVEL_COLOR[article.categoryKey || ''] || '#8B949E'
-  const imgSrc = article.imageUrl || FALLBACK_IMAGES[article.categoryKey || ''] || FALLBACK_IMAGES.conflict
+  const { color, fallback, imgSrc } = resolveArticle(article)
   const [imgErr, setImgErr] = useState(false)
 
   return (
     <div className="news-card" onClick={onClick}>
       <div className="news-card-img">
         <img
-          src={imgErr ? FALLBACK_IMAGES[article.categoryKey || 'conflict'] : proxyImg(imgSrc)}
+          src={imgErr ? fallback : proxyImg(imgSrc)}
           alt={article.title}
           onError={() => setImgErr(true)}
         />
         {article.category && (
-          <span className="news-card-badge" style={{ background: color }}>{article.category}</span>
+          <span className="news-card-badge" style={{ background: color }}>
+            {article.category}
+          </span>
         )}
       </div>
       <div className="news-card-body">
         <div className="article-row-meta">
           <span className="article-source">{article.source}</span>
-          {article.relative_time && <><span className="meta-sep">·</span><span className="article-time">{article.relative_time}</span></>}
+          {article.relative_time && (
+            <>
+              <span className="meta-sep">·</span>
+              <span className="article-time">{article.relative_time}</span>
+            </>
+          )}
         </div>
         <div className="news-card-title">{article.title}</div>
-        {article.description && <div className="news-card-desc">{article.description}</div>}
+        {article.description && (
+          <div className="news-card-desc">{article.description}</div>
+        )}
       </div>
     </div>
   )
 }
 
-/* ── Modal ──────────────────────────────────────────────────────────────── */
+/* ── Modal ────────────────────────────────────────────────────────────────── */
 
 function ArticleModal({ article, onClose }: { article: ArticleWithImage; onClose: () => void }) {
-  const color  = LEVEL_COLOR[article.categoryKey || ''] || '#8B949E'
-  const imgSrc = article.imageUrl || FALLBACK_IMAGES[article.categoryKey || ''] || FALLBACK_IMAGES.conflict
+  const { color, fallback, imgSrc } = resolveArticle(article)
   const [imgErr, setImgErr] = useState(false)
 
   return (
@@ -225,24 +293,36 @@ function ArticleModal({ article, onClose }: { article: ArticleWithImage; onClose
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-img-wrap">
           <img
-            src={imgErr ? FALLBACK_IMAGES[article.categoryKey || 'conflict'] : proxyImg(imgSrc)}
+            src={imgErr ? fallback : proxyImg(imgSrc)}
             alt={article.title}
             onError={() => setImgErr(true)}
           />
           {article.category && (
-            <span className="news-card-badge" style={{ background: color }}>{article.category}</span>
+            <span className="news-card-badge" style={{ background: color }}>
+              {article.category}
+            </span>
           )}
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           <div className="article-row-meta" style={{ marginBottom: 8 }}>
             <span className="article-source">{article.source}</span>
-            {article.relative_time && <><span className="meta-sep">·</span><span className="article-time">{article.relative_time}</span></>}
+            {article.relative_time && (
+              <>
+                <span className="meta-sep">·</span>
+                <span className="article-time">{article.relative_time}</span>
+              </>
+            )}
           </div>
           <h3>{article.title}</h3>
           {article.description && <p>{article.description}</p>}
           {article.url && (
-            <a className="modal-link" href={article.url} target="_blank" rel="noopener noreferrer">
+            <a
+              className="modal-link"
+              href={article.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Ver artigo original →
             </a>
           )}

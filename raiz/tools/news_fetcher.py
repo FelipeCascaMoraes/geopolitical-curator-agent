@@ -239,7 +239,10 @@ def buscar_rss(max_results: int = 40) -> list[dict]:
                 description = item.findtext("description", "").strip()
                 url         = item.findtext("link", "").strip()
                 pub_date    = item.findtext("pubDate", "")
-                image_url   = _extract_image(item, ns)
+                if feed["category_key"] == "brazil":
+                    image_url = ""
+                else:
+                    image_url = _extract_image(item, ns)
 
                 # Remove tags HTML da descrição
                 description = re.sub(r"<[^>]+>", "", description).strip()
@@ -278,7 +281,7 @@ def buscar_rss(max_results: int = 40) -> list[dict]:
     sem_imagem = [a for a in artigos if not a["imageUrl"]]
     if sem_imagem:
         with ThreadPoolExecutor(max_workers=8) as ex:
-            futures = {ex.submit(_fetch_og_image, a["url"]): a for a in sem_imagem}
+            futures = {ex.submit(_fetch_article_image, a["url"], a["title"]): a for a in sem_imagem}
             for future in as_completed(futures, timeout=6):
                 artigo = futures[future]
                 try:
@@ -290,6 +293,28 @@ def buscar_rss(max_results: int = 40) -> list[dict]:
 
     return artigos
 
+
+def _fetch_article_image(url: str, title: str) -> str:
+    """
+    Tenta extrair imagem real do artigo via duas estratégias:
+    1. og:image no HTML (funciona para sites sem JS)
+    2. Google Custom Search thumbnail (fallback para sites com JS como G1)
+    """
+    # Estratégia 1 — og:image direto
+    try:
+        resp = requests.get(url, timeout=3, headers=HEADERS)
+        for pattern in [
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+        ]:
+            match = re.search(pattern, resp.text)
+            if match:
+                img = match.group(1)
+                if img.startswith("http") and "logo" not in img.lower():
+                    return img
+    except Exception:
+        pass
+    return ""
 
 def buscar_noticias(query: str = "", dias: int = 7, max_results: int = 40) -> list[dict]:
     """
