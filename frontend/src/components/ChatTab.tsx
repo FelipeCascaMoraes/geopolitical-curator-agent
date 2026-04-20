@@ -17,6 +17,9 @@ interface ChatTabProps {
   initialMessages:  ChatMessage[]
   onFirstMessage:   (convId: string, question: string) => void
   onMessagesChange: (convId: string, messages: ChatMessage[]) => void
+  /** Quando definido (ex.: vindo da aba Notícias), envia automaticamente após montar. */
+  pendingQuestion?: string | null
+  onPendingQuestionConsumed?: () => void
 }
 
 const SUGGESTIONS = [
@@ -83,7 +86,12 @@ function useSpeechRecognition(onResult: (text: string) => void) {
 // =============================================================================
 
 export default function ChatTab({
-  convId, initialMessages, onFirstMessage, onMessagesChange,
+  convId,
+  initialMessages,
+  onFirstMessage,
+  onMessagesChange,
+  pendingQuestion,
+  onPendingQuestionConsumed,
 }: ChatTabProps) {
   const [messages, setMessages]       = useState<ChatMessage[]>(initialMessages)
   const [input, setInput]             = useState('')
@@ -185,6 +193,16 @@ export default function ChatTab({
       abortRef.current = null
     }
   }
+
+  const sendMessageRef = useRef(sendMessage)
+  sendMessageRef.current = sendMessage
+
+  useEffect(() => {
+    if (!pendingQuestion?.trim()) return
+    const q = pendingQuestion.trim()
+    onPendingQuestionConsumed?.()
+    void sendMessageRef.current(q)
+  }, [pendingQuestion, onPendingQuestionConsumed])
 
   const stopStreaming = () => {
     abortRef.current?.abort()

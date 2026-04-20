@@ -82,6 +82,9 @@ export default function App() {
     () => conversations[0]?.id ?? ''
   )
 
+  /** Pergunta a enviar ao abrir o chat a partir da aba Notícias. */
+  const [pendingChatQuestion, setPendingChatQuestion] = useState<string | null>(null)
+
   // Conversa ativa derivada do estado — não precisa de useState separado
   const activeConversation = conversations.find(c => c.id === activeConvId) ?? conversations[0]
 
@@ -167,6 +170,10 @@ export default function App() {
     ))
   }, [])
 
+  const clearPendingChatQuestion = useCallback(() => {
+    setPendingChatQuestion(null)
+  }, [])
+
   return (
     <div className="app-layout">
 
@@ -195,7 +202,6 @@ export default function App() {
         onDeleteConversation={handleDeleteConversation}
         onClearAll={handleClearAll}
       />
-
       <main className="main-content">
         {activeTab === 'chat' ? (
           <ChatTab
@@ -204,9 +210,16 @@ export default function App() {
             initialMessages={activeConversation?.messages ?? []}
             onFirstMessage={handleFirstMessage}
             onMessagesChange={handleMessagesChange}
+            pendingQuestion={pendingChatQuestion}
+            onPendingQuestionConsumed={clearPendingChatQuestion}
           />
         ) : (
-          <NewsTab />
+          <NewsTab
+            onAskInChat={(question) => {
+              setActiveTab('chat')
+              setPendingChatQuestion(question)
+            }}
+          />
         )}
       </main>
 
