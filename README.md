@@ -6,7 +6,7 @@
 
 ## Sobre o Projeto
 
-O **Geopolitical Curator Agent** é um agente de inteligência artificial focado em geopolítica mundial. Ele monitora, curadoria e analisa os principais acontecimentos globais — conflitos armados, movimentos diplomáticos, crises econômicas e impactos humanitários — entregando tudo isso de forma conversacional e acessível.
+O **Geopolitical Curator Agent** é um agente de inteligência artificial focado em geopolítica mundial. Ele monitora, curadoria e analisa os principais acontecimentos globais — conflitos armados, movimentos diplomáticos, crises econômicas, principais mercados financeiro, os 6 continentes e impactos humanitários — entregando tudo isso de forma conversacional e acessível.
 
 O projeto nasceu como um **objetivo de aprendizado**, explorando na prática como construir agentes de IA com ferramentas modernas. A inspiração veio de um projeto do curso da **Asimov Academy**, adaptado e expandido com novas funcionalidades.
 
@@ -90,7 +90,7 @@ Durante o desenvolvimento, usei:
 - Integração de APIs de IA em aplicações React
 - Design de interfaces conversacionais
 - Organização de projetos fullstack com Python + TypeScript
-
+- Frontend
 ---
 
 ## Autor
