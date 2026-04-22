@@ -24,8 +24,6 @@ export interface Conversation {
 // HELPERS DE PERSISTÊNCIA
 // Salva e carrega conversas do localStorage.
 // Datas são serializadas como string ISO e precisam ser convertidas de volta.
-// =============================================================================
-
 function saveConversations(convs: Conversation[]) {
   try {
     localStorage.setItem('geo_conversations', JSON.stringify(convs))
@@ -81,9 +79,6 @@ export default function App() {
   const [activeConvId, setActiveConvId] = useState<string>(
     () => conversations[0]?.id ?? ''
   )
-
-  /** Pergunta a enviar ao abrir o chat a partir da aba Notícias. */
-  const [pendingChatQuestion, setPendingChatQuestion] = useState<string | null>(null)
 
   // Conversa ativa derivada do estado — não precisa de useState separado
   const activeConversation = conversations.find(c => c.id === activeConvId) ?? conversations[0]
@@ -170,10 +165,6 @@ export default function App() {
     ))
   }, [])
 
-  const clearPendingChatQuestion = useCallback(() => {
-    setPendingChatQuestion(null)
-  }, [])
-
   return (
     <div className="app-layout">
 
@@ -202,6 +193,7 @@ export default function App() {
         onDeleteConversation={handleDeleteConversation}
         onClearAll={handleClearAll}
       />
+      
       <main className="main-content">
         {activeTab === 'chat' ? (
           <ChatTab
@@ -210,16 +202,9 @@ export default function App() {
             initialMessages={activeConversation?.messages ?? []}
             onFirstMessage={handleFirstMessage}
             onMessagesChange={handleMessagesChange}
-            pendingQuestion={pendingChatQuestion}
-            onPendingQuestionConsumed={clearPendingChatQuestion}
           />
         ) : (
-          <NewsTab
-            onAskInChat={(question) => {
-              setActiveTab('chat')
-              setPendingChatQuestion(question)
-            }}
-          />
+          <NewsTab />
         )}
       </main>
 
