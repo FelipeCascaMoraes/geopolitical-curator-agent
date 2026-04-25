@@ -21,11 +21,11 @@ interface ChatTabProps {
 // DADOS — Ticker
 // =============================================================================
 const TICKER_ALERTS = [
-  { id:1, severity:'critical', text:'Rússia intensifica ataques em Kharkiv — 19 abr' },
-  { id:2, severity:'critical', text:'Central de Zaporizhzhia perde energia — 19 abr' },
-  { id:3, severity:'high',     text:'Israel expande operações no sul de Gaza — 19 abr' },
-  { id:4, severity:'high',     text:'China realiza exercícios militares próximo a Taiwan — 19 abr' },
-  { id:5, severity:'medium',   text:'Venezuela reafirma soberania sobre Essequibo — 19 abr' },
+  { id:1, severity:'critical', text:'Rússia intensifica ataques em Kharkiv — 25 abr' },
+  { id:2, severity:'critical', text:'Central de Zaporizhzhia perde energia — 25 abr' },
+  { id:3, severity:'high',     text:'Israel expande operações no sul de Gaza — 24 abr' },
+  { id:4, severity:'high',     text:'China realiza exercícios militares próximo a Taiwan — 23 abr' },
+  { id:5, severity:'medium',   text:'Venezuela reafirma soberania sobre Essequibo — 21 abr' },
   { id:6, severity:'high',     text:'Coreia do Norte lança míssil balístico — 19 abr' },
   { id:7, severity:'medium',   text:'Golpe de Estado fracassado no Mali — 18 abr' },
   { id:8, severity:'critical', text:'OTAN reforça flanco leste com 3.000 tropas adicionais — 18 abr' },
