@@ -127,29 +127,44 @@ function useSpeechRecognition(onResult: (text: string) => void) {
 // =============================================================================
 // SUB-COMPONENTE — Sparkline SVG
 // =============================================================================
-function SparklineSVG({ data, color, width = 100, height = 40 }: {
+function SparklineSVG({ data, color, height = 40 }: {
   data: number[]; color: string; width?: number; height?: number
 }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [w, setW] = useState(200)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) setW(e.contentRect.width || 200)
+    })
+    ro.observe(containerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
   if (!data.length) return null
   const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1
   const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width
+    const x = (i / (data.length - 1)) * w
     const y = height - 4 - ((v - mn) / rng) * (height - 8)
     return `${x.toFixed(1)},${y.toFixed(1)}`
   })
-  const area = `0,${height} ${pts.join(' ')} ${width},${height}`
+  const area = `0,${height} ${pts.join(' ')} ${w},${height}`
+
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}
-      style={{ display:'block', width:'100%', height }} preserveAspectRatio="none">
-      <polygon points={area} fill={color} opacity="0.15" />
-      <polyline points={pts.join(' ')} fill="none" stroke={color}
-        strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-      <circle
-        cx={parseFloat(pts[pts.length-1].split(',')[0])}
-        cy={parseFloat(pts[pts.length-1].split(',')[1])}
-        r="3" fill={color}
-      />
-    </svg>
+    <div ref={containerRef} style={{ width: '100%', height }}>
+      <svg width={w} height={height} viewBox={`0 0 ${w} ${height}`}
+        style={{ display:'block', width:'100%', height }} preserveAspectRatio="none">
+        <polygon points={area} fill={color} opacity="0.15" />
+        <polyline points={pts.join(' ')} fill="none" stroke={color}
+          strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+        <circle
+          cx={parseFloat(pts[pts.length-1].split(',')[0])}
+          cy={parseFloat(pts[pts.length-1].split(',')[1])}
+          r="3" fill={color}
+        />
+      </svg>
+    </div>
   )
 }
 
@@ -181,7 +196,7 @@ function AlertTicker() {
 }
 
 // =============================================================================
-// SUB-COMPONENTE — Cards de Conflitos (AUMENTADOS)
+// SUB-COMPONENTE — Cards de Conflitos
 // =============================================================================
 function ConflictRiskCards({ onAsk }: { onAsk: (q: string) => void }) {
   const badgeClass = (risk: string) => {
@@ -213,21 +228,17 @@ function ConflictRiskCards({ onAsk }: { onAsk: (q: string) => void }) {
           >
             <span className="conflict-card-accent-bar" style={{ background: c.color }} />
 
-            {/* Topo: região + dot de severidade */}
             <div className="conflict-card-top">
               <div className="conflict-card-region">{c.region}</div>
               <div className="conflict-card-sev-dot" style={{ background: c.color }} />
             </div>
 
-            {/* Nome do conflito */}
             <div className="conflict-card-name">{c.name}</div>
 
-            {/* Sparkline maior */}
             <div className="conflict-card-spark">
               <SparklineSVG data={c.sparkData} color={c.color} height={44} />
             </div>
 
-            {/* Rodapé: badge + arrow */}
             <div className="conflict-card-footer">
               <span className={badgeClass(c.risk)}>
                 {c.trend === 'up' ? '↑ ' : c.trend === 'down' ? '↓ ' : '→ '}
@@ -243,7 +254,7 @@ function ConflictRiskCards({ onAsk }: { onAsk: (q: string) => void }) {
 }
 
 // =============================================================================
-// SUB-COMPONENTE — Cards de Mercado (AUMENTADOS + navegação individual)
+// SUB-COMPONENTE — Cards de Mercado
 // =============================================================================
 function MarketCards({
   onNavigate,
@@ -279,22 +290,18 @@ function MarketCards({
             onClick={() => onNavigate?.()}
             title="Abrir painel de mercados"
           >
-            {/* Topo */}
             <div className="market-mini-header">
               <div className="market-mini-cat">{m.cat}</div>
               <div className="market-mini-dir-dot" style={{ background: dc(m.dir) }} />
             </div>
 
-            {/* Nome */}
             <div className="market-mini-name">{m.name}</div>
 
-            {/* Valor + variação */}
             <div className="market-mini-value">{m.value}</div>
             <div className="market-mini-change" style={{ color: dc(m.dir) }}>
               {da(m.dir)} {m.change}
             </div>
 
-            {/* Rodapé: analisar no chat */}
             <div className="market-mini-footer">
               <button
                 className="market-mini-ask"
@@ -310,15 +317,6 @@ function MarketCards({
           </div>
         ))}
       </div>
-
-      {onNavigate && (
-        <button className="market-full-btn" onClick={onNavigate}>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M14 1H2a1 1 0 00-1 1v9a1 1 0 001 1h3v3l4-3h5a1 1 0 001-1V2a1 1 0 00-1-1z"/>
-          </svg>
-          Abrir painel completo de mercados com gráficos ao vivo
-        </button>
-      )}
     </div>
   )
 }
@@ -435,15 +433,12 @@ export default function ChatTab({
   const hasMessages = messages.length > 0
 
   return (
-    <div className="chat-container">
+    // height: 100% garante que o container ocupe todo o espaço disponível
+    <div className="chat-container" style={{ height: '100%' }}>
       {!hasMessages ? (
         <div className="chat-empty">
           <AlertTicker />
-
-          
-
           <ConflictRiskCards onAsk={q => sendMessage(q)} />
-
           <MarketCards
             onNavigate={onNavigateToNews}
             onAskInChat={q => sendMessage(q)}
