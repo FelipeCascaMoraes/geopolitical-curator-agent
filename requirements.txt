@@ -15,7 +15,7 @@ agno                        # framework de agentes
 # -----------------------------------------------------------------------------
 # LLM — Groq (llama-3.3-70b-versatile)
 # -----------------------------------------------------------------------------
-Gemini                        # SDK do Google — necessário para agno.models.google
+google-generativeai         # SDK do Google — necessário para agno.models.google
 
 # -----------------------------------------------------------------------------
 # Busca de notícias
