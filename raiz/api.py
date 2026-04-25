@@ -5,9 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 import requests as req_lib
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from agent import geopolitical_workflow, relator
 from tools.news_fetcher import buscar_noticias, formatar_para_agente
+import json
+from fastapi import FastAPI
+
+load_dotenv()
 
 app = FastAPI(title="GeoPulse API")
 
